@@ -49,71 +49,57 @@ def _worksheet_part_map(archive: zipfile.ZipFile) -> dict[str, str]:
 
 
 def verify_native_cell_images(workbook_path: str | Path, expected_cells: dict[str, list[str]]) -> None:
-    """Verify OOXML rich-value metadata is attached to every expected photo cell."""
+    """Verify rich-value image parts and a cell metadata binding for every photo cell."""
     path = Path(workbook_path)
     try:
         with zipfile.ZipFile(path, "r") as archive:
             bad = archive.testzip()
             if bad:
-                raise NativeInCellImagesUnavailable(f"Excel produced a damaged XLSX part: {bad}")
+                raise NativeInCellImagesUnavailable(f"Damaged XLSX ZIP part: {bad}")
             names = set(archive.namelist())
             if "xl/metadata.xml" not in names:
-                raise NativeInCellImagesUnavailable(
-                    "Excel did not write the native rich-value metadata required for in-cell pictures."
-                )
-            rich_parts = [name for name in names if name.startswith("xl/richData/")]
-            if not rich_parts:
-                raise NativeInCellImagesUnavailable(
-                    "Excel did not write the native rich-data image records."
-                )
-
+                raise NativeInCellImagesUnavailable("Excel did not write native rich-value metadata.")
+            if not any(name.startswith("xl/richData/") for name in names):
+                raise NativeInCellImagesUnavailable("Excel did not write native rich-data image records.")
             part_map = _worksheet_part_map(archive)
             ns = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
             missing = []
-            for sheet_name, cells in expected_cells.items():
+            for sheet_name, addresses in expected_cells.items():
                 if sheet_name not in part_map:
                     raise NativeInCellImagesUnavailable(
-                        f"Expected worksheet '{sheet_name}' was not found after Excel conversion."
+                        f"Worksheet '{sheet_name}' missing after Excel conversion."
                     )
                 root = ET.fromstring(archive.read(part_map[sheet_name]))
                 cell_map = {
                     cell.attrib.get("r"): cell
                     for cell in root.findall(".//main:sheetData/main:row/main:c", ns)
                 }
-                for address in cells:
-                    cell = cell_map.get(address)
+                for address in addresses:
+                    cell = cell_map.get(address.replace("$", "").upper())
                     if cell is None or "vm" not in cell.attrib:
                         missing.append(f"{sheet_name}!{address}")
             if missing:
                 raise NativeInCellImagesUnavailable(
-                    "Excel did not store native image values in these expected cells: "
-                    + ", ".join(missing[:20])
+                    "Native image value missing from: " + ", ".join(missing[:20])
                 )
     except zipfile.BadZipFile as exc:
-        raise NativeInCellImagesUnavailable("The workbook is not a valid XLSX file after Excel conversion.") from exc
+        raise NativeInCellImagesUnavailable("The generated output is not a valid XLSX file.") from exc
 
 
 def convert_drawings_to_native_cells(
     workbook_path: str | Path,
     expected_cells: dict[str, list[str]],
 ) -> int:
-    """Convert all temporary embedded pictures in named worksheets into cell values.
-
-    Expected cells are explicit so we can verify every image landed in the intended
-    product row. Images are first inserted as embedded drawings by openpyxl; Excel
-    then converts them using Shape.PlacePictureInCell. There is intentionally no
-    fallback to floating images.
-    """
+    """Use Excel's PlacePictureInCell on each expected embedded picture; never fall back."""
+    expected_count = sum(len(items) for items in expected_cells.values())
+    if expected_count == 0:
+        return 0
     path = Path(workbook_path).resolve()
     if not path.is_file():
         raise FileNotFoundError(path)
-    expected_count = sum(len(addresses) for addresses in expected_cells.values())
-    if expected_count == 0:
-        return 0
 
     win32 = _excel_available()
-    excel = None
-    workbook = None
+    excel = workbook = None
     converted = 0
     try:
         excel = win32.DispatchEx("Excel.Application")
@@ -121,27 +107,21 @@ def convert_drawings_to_native_cells(
         excel.DisplayAlerts = False
         excel.AskToUpdateLinks = False
         excel.EnableEvents = False
-        # msoAutomationSecurityForceDisable; the generated workbook contains no macros.
         try:
             excel.AutomationSecurity = 3
         except Exception:
             pass
         workbook = excel.Workbooks.Open(
-            Filename=str(path),
-            UpdateLinks=0,
-            ReadOnly=False,
-            AddToMru=False,
+            Filename=str(path), UpdateLinks=0, ReadOnly=False, AddToMru=False,
             IgnoreReadOnlyRecommended=True,
         )
-        for sheet_name, cells in expected_cells.items():
+        for sheet_name, addresses in expected_cells.items():
             worksheet = workbook.Worksheets(sheet_name)
-            expected = {address.replace("$", "").upper() for address in cells}
+            expected = {address.replace("$", "").upper() for address in addresses}
             found = set()
-            # Iterate backwards because Excel may remove a drawing after conversion.
             for index in range(int(worksheet.Shapes.Count), 0, -1):
                 shape = worksheet.Shapes.Item(index)
-                # msoPicture = 13; openpyxl embeds raster images as pictures.
-                if int(shape.Type) != 13:
+                if int(shape.Type) != 13:  # msoPicture
                     continue
                 address = str(shape.TopLeftCell.Address(False, False)).replace("$", "").upper()
                 if address not in expected:
@@ -151,15 +131,14 @@ def convert_drawings_to_native_cells(
                 except Exception as exc:
                     raise NativeInCellImagesUnavailable(
                         f"Excel could not place the photo in {sheet_name}!{address}. "
-                        "This Excel build may not support native in-cell pictures."
+                        "The installed Excel build may not support Place in Cell."
                     ) from exc
                 found.add(address)
                 converted += 1
-            absent = expected - found
-            if absent:
+            if expected - found:
                 raise NativeInCellImagesUnavailable(
-                    f"Could not locate the embedded photo drawing(s) for "
-                    f"{sheet_name}: {', '.join(sorted(absent))}"
+                    f"No embedded picture drawing found for {sheet_name}: "
+                    f"{', '.join(sorted(expected - found))}"
                 )
         workbook.Save()
         workbook.Close(SaveChanges=True)
@@ -168,9 +147,8 @@ def convert_drawings_to_native_cells(
         raise
     except Exception as exc:
         raise NativeInCellImagesUnavailable(
-            "Excel automation could not complete native in-cell image conversion. "
-            "Check that desktop Excel is installed, activated, and not displaying "
-            f"a modal dialog. Details: {exc}"
+            "Excel automation failed. Check that desktop Excel is installed, activated, "
+            f"and not blocked by a modal dialog. Details: {exc}"
         ) from exc
     finally:
         if workbook is not None:
@@ -183,10 +161,9 @@ def convert_drawings_to_native_cells(
                 excel.Quit()
             except Exception:
                 pass
-
     if converted != expected_count:
         raise NativeInCellImagesUnavailable(
-            f"Expected {expected_count} in-cell images, but Excel converted {converted}."
+            f"Expected {expected_count} photos; Excel converted {converted}."
         )
     verify_native_cell_images(path, expected_cells)
     return converted
