@@ -2,43 +2,31 @@
 
 ## Requirement
 
-Product images in generated workbooks must be true Excel **Picture in Cell / Place in Cell** values. Ordinary DrawingML pictures with a one-cell or two-cell anchor are not acceptable: they may visually line up with rows but they are drawing-layer objects, not cell values, and can become detached when rows are sorted or filtered.
-
-Microsoft documents native in-cell pictures as sortable/filterable cell values in supported Excel releases:
-- Microsoft 365
-- Excel 2024
-
-See [Microsoft Support: Insert a picture with the Place in Cell feature](https://support.microsoft.com/en-us/excel/insert-picture-in-cell-in-excel).
+Product photographs must be true Excel **Picture in Cell** values. A DrawingML image anchored over a cell is not sufficient: it is a drawing object, not a cell value, and can become detached from a product when sorting or filtering.
 
 ## Implementation
 
-1. Python extracts product photos and associates them with SKU rows.
-2. openpyxl builds a normal workbook and embeds each local image as a temporary, self-contained picture drawing positioned in the intended Photo cell. It is not linked to the photo folder.
-3. On Windows, `ordertool.excel_images.convert_drawings_to_native_cells` opens the workbook through desktop Excel automation and calls Excel's `Shape.PlacePictureInCell` operation on each intended image.
-4. Excel saves the workbook using its native rich-value image representation.
-5. The application inspects the resulting XLSX package. It requires `xl/metadata.xml`, rich-data image parts, and a cell metadata (`vm`) binding at every expected image cell.
-6. If Excel or the necessary in-cell feature is unavailable, export fails with an explicit message. The application must never report a floating-picture workbook as satisfying the in-cell requirement.
+1. PyMuPDF extracts the original embedded photo from the PDF and associates it with a product row using page geometry.
+2. The row is linked to the official catalogue using the PDF Style Code.
+3. The catalogue's Article Code becomes the canonical product identifier and the photo filename, e.g. `6814388.jpg`.
+4. Python writes the normal workbook, tables, formulas, formats, and row heights with openpyxl.
+5. The native-image writer patches the XLSX ZIP package with Excel rich-value metadata, local image relationships, embedded image files, and worksheet cell metadata indices.
+6. The exporter checks that each expected photo cell has a native rich-value index and that the related image bytes are embedded.
 
-The workbook must not be opened and re-saved by openpyxl after native in-cell conversion; libraries that do not understand Excel's rich-value image extension may remove or damage it.
+The package structure uses the `xl/metadata.xml` and `xl/richData/*` rich-value parts, with worksheet cell `vm` references and local-image relationships. It does **not** add `xl/drawings/*` pictures or rely on Excel COM automation.
 
-## Runtime requirements and compatibility
+## Why Excel COM was removed
 
-- Windows 10/11 x64.
-- Desktop Microsoft Excel from Microsoft 365 or Excel 2024 with native Place in Cell support.
-- Python dependency: `pywin32`.
-- No network URL is used for product photos; local image files are embedded into the workbook.
+The previous version attempted to open each generated workbook through the Windows Excel automation API. The user's first batch failed with Excel's `Workbooks.Open method failed` error for all three orders. Creating the native rich-value package directly removes that runtime dependency and avoids an Excel startup/session issue during conversion.
 
-The converter uses Excel itself to author the native format, avoiding a hand-written rich-data OOXML implementation. It validates the output package before marking export successful.
+## Compatibility and limitations
 
-## Acceptance tests
+- The workbook contains actual embedded image bytes; there are no external links or HTTPS image formulas.
+- Open it in a Microsoft Excel version that supports **Place in Cell** / native in-cell images.
+- Older Excel versions and third-party spreadsheet applications may not render rich-value images correctly.
+- Do not re-save the workbook with openpyxl or another library that does not preserve rich-value image parts. Such a save may remove the image metadata.
+- Sorting/filtering must be tested in the exact Excel version used by the business before deployment is approved.
 
-For an order workbook and photo library:
-- Every photo-bearing product row has an in-cell picture value in the Photo column.
-- Every target Photo cell has a native rich-value metadata binding.
-- The workbook contains rich-data image records and is a valid XLSX ZIP package.
-- Open the workbook in supported Excel, sort the product table by SKU, and filter it. Confirm the pictures remain with their corresponding SKU values.
-- Save, close, and reopen the workbook. Confirm the pictures still display and remain sortable/filterable.
+## Automated checks
 
-## Older Excel versions
-
-Older Excel versions may display a compatibility warning or fail to render native in-cell images. The application does not silently substitute floating pictures. On unsupported installations, the user must upgrade Excel or explicitly choose an export without embedded images; that export is marked as not meeting the product-photo acceptance requirement.
+Tests verify the XLSX ZIP integrity, embedded media, rich-value package parts, and each expected worksheet cell's `vm` metadata binding. Those structural tests do not replace the final user acceptance test in desktop Excel.
