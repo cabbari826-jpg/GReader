@@ -51,7 +51,10 @@ def check_for_update(current_version: str) -> ReleaseInfo | None:
     except UpdateError as exc:
         # A freshly initialized repository has no stable Release yet.
         if "HTTP Error 404" in str(exc):
-            return None
+            raise UpdateError(
+                "No stable installer release has been published yet. "
+                "Check the GitHub Releases page or try again after the maintainer publishes one."
+            ) from exc
         raise
     payload = json.loads(release_data.decode("utf-8"))
     tag = str(payload.get("tag_name") or "").strip()
