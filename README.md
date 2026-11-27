@@ -1,20 +1,30 @@
 # PDF Order Converter & Validator
 
-A local-first Windows desktop application for extracting product orders from PDF documents, validating them against official price lists, exporting Excel workbooks, and maintaining a reusable product-photo library.
+A local-first Windows desktop application for extracting PDF product orders, checking them against official catalogues, exporting Excel files, and maintaining a reusable product-photo library.
 
-**Target:** Windows 10/11 x64 · **Runtime:** Python 3.11 · **GUI:** PySide6
+**Target:** Windows 10/11 x64 · **Python:** 3.11 · **GUI:** PySide6
 
-## Features
+## Core capabilities
 
-- Batch import of PDF orders, including multi-page documents.
-- Coordinate-aware extraction of order details, product rows, quantities, prices, totals, and embedded product images.
-- Tesseract OCR fallback for scanned pages (requires a local Tesseract installation).
-- SKU-first catalogue matching, with cautious description matching when a SKU is absent.
-- Price, quantity, arithmetic, order-total, and optional pack-multiple checks.
-- Separate XLSX output per order, a six-sheet validation report, and an embedded-image product-photo library.
-- Manual review for uncertain product matches and photo associations.
-- Local SQLite processing history and JSON audit files.
-- Local processing only: the application does not upload business files to external servers.
+- Batch import of multi-page PDF orders.
+- Coordinate-based table extraction and a local Tesseract OCR fallback.
+- Extraction of product codes, descriptions, quantities, prices, totals, and product photos.
+- SKU-first catalogue matching, cautious description matching, and manual review for ambiguous associations.
+- Decimal-based price, arithmetic, line-total, order-total, and optional pack-size checks.
+- Separate order workbooks, six-sheet validation report, product photo library, JSON audit and local SQLite history.
+- Local processing only. Order files and catalogues are not uploaded to external services.
+
+## Critical photo requirement: native Excel in-cell pictures
+
+Product photographs must be **native Excel Picture in Cell values**, not pictures floating over or anchored to worksheet cells.
+
+The export pipeline uses Excel's native *Place in Cell* operation on Windows after Python creates the workbook and embeds the local image bytes. It then checks the OOXML rich-value metadata and the expected photo cells. It does not report success or quietly fall back to floating drawings when native in-cell conversion fails.
+
+**Runtime requirement for photo workbooks:** Windows with desktop Microsoft Excel that supports Place in Cell (Microsoft 365 or Excel 2024) and the Python `pywin32` package. Microsoft documents that native cell pictures can be sorted and filtered with worksheet data: [Microsoft Support](https://support.microsoft.com/en-us/excel/insert-picture-in-cell-in-excel).
+
+This dependency is needed only for creating workbooks that contain product photos. The application must explain the compatibility requirement before processing if Excel is unavailable.
+
+See [docs/EXCEL_IN_CELL_IMAGES.md](docs/EXCEL_IN_CELL_IMAGES.md) for the technical approach and acceptance tests.
 
 ## Quick start (Windows)
 
@@ -34,34 +44,20 @@ python -m compileall -q app.py ordertool tests
 python -m pytest -q
 ```
 
-## Build a Windows installer
+## Build the Windows installer
 
-Install Python 3.11 x64 and Inno Setup 6, then run `BUILD_WINDOWS.bat`. The script creates a standalone application under `dist/PDFOrderValidator`. Compile `installer.iss` with Inno Setup to produce the installer. GitHub Actions can also build the installer when a `v*` tag is pushed.
+Install Python 3.11 x64 and Inno Setup 6, then run `BUILD_WINDOWS.bat`. Compile `installer.iss` with Inno Setup. The project also contains a GitHub Actions release workflow to build an installer from a `v*` tag.
 
-## Repository structure
+## Accuracy and audit rules
 
-```text
-app.py
-ordertool/              # extraction, catalogue matching, validation, exports, GUI
- tests/                 # automated tests
- docs/                  # architecture notes
- .github/workflows/     # CI and Windows release automation
- BUILD_WINDOWS.bat
- installer.iss
-```
+- SKU is the primary matching key. Similar descriptions alone do not establish a product match.
+- Original extracted values are preserved; the application reports discrepancies rather than correcting prices or quantities.
+- Money uses Python `Decimal`.
+- Missing discounts, VAT, or other unavailable fields are not invented.
+- All uncertain product and image associations are flagged for review.
+- Real orders, catalogues, photos, audit logs, and generated business reports must never be committed to this repository.
 
-## Accuracy and data handling
+## Current status
 
-- SKU is the primary product key; uncertain matches require review.
-- Original extracted values are preserved. The application reports discrepancies rather than silently correcting source values.
-- Monetary comparisons use Python `Decimal`.
-- Missing information such as discounts or VAT is not invented.
-- Real orders, price lists, photos, audit logs, and generated reports must stay out of version control.
+The repository is being assembled from the sample-tested processing implementation. Native in-cell image conversion is now a hard design requirement. The native Excel automation and OOXML verification path still requires Windows acceptance testing on a machine with supported desktop Excel. Do not treat this repository as an accounting-approved production release until the Windows build, in-cell sorting/filtering test, and regression tests pass.
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the processing design, and [CONTRIBUTING.md](CONTRIBUTING.md) for development checks.
-
-## Known limitations
-
-The first extraction adapter is template-oriented. A substantially different PDF layout may require an adapter update. Product images are embedded XLSX drawing objects anchored to their rows; they are not Microsoft's newer native “Place in Cell” images, so sorting/filtering must be verified in the target Excel version. OCR results and uncertain image links require manual review.
-
-The project has been exercised against private sample documents, which are intentionally not included in this public repository. Review the Windows CI results and perform user acceptance testing with representative files before accounting use.
