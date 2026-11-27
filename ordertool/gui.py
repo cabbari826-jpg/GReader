@@ -149,7 +149,7 @@ class PreviewDialog(QDialog):
 
 
 class PhotoReviewDialog(QDialog):
-    """Resolve uncertain extracted images against a manually selected product SKU."""
+    """Resolve uncertain extracted images against a manually selected Article Code."""
 
     def __init__(self, order, parent=None):
         super().__init__(parent)
@@ -159,7 +159,7 @@ class PhotoReviewDialog(QDialog):
         self.resize(900, 560)
         layout = QVBoxLayout(self)
         intro = QLabel(
-            "Confirm the product SKU for each uncertain image. Leave a row unassigned "
+            "Confirm the Article Code for each uncertain image. Leave a row unassigned "
             "when the photograph cannot be identified confidently."
         )
         intro.setWordWrap(True)
@@ -172,7 +172,7 @@ class PhotoReviewDialog(QDialog):
                 entries.extend((product, path, names[i] if i < len(names) else Path(path).name)
                                for i, path in enumerate(paths))
         self.table = QTableWidget(len(entries), 4)
-        self.table.setHorizontalHeaderLabels(["Photo Preview", "Source Row SKU", "Image Filename", "Confirmed SKU"])
+        self.table.setHorizontalHeaderLabels(["Photo Preview", "Source Article Code", "Image Filename", "Confirmed Article Code"])
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
         self.table.setColumnWidth(0, 130)
         self.table.setColumnWidth(1, 150)
