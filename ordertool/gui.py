@@ -334,7 +334,7 @@ class MainWindow(QMainWindow):
             QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes,
         )
         if answer == QMessageBox.Yes:
-            started = QProcess.startDetached(installer_path, [])
+            started, _pid = QProcess.startDetached(installer_path, [])
             if started:
                 self.close()
             else:
@@ -709,14 +709,17 @@ class MainWindow(QMainWindow):
                 names = product.photo_filenames or ([product.photo_filename] if product.photo_filename else [])
                 if not paths:
                     records.append({
-                        "sku": product.sku, "description": product.description, "filename": "",
+                        "sku": product.article_code, "article_code": product.article_code,
+                        "style_code": product.style_code, "description": product.description, "filename": "",
                         "source_pdf": Path(order.source_pdf).name, "extraction_status": "MISSING",
                         "verification_status": "MISSING", "page": product.page, "image_path": "",
                     })
                 else:
                     for index, image_path in enumerate(paths):
                         records.append({
-                            "sku": product.sku if product.photo_status in ("MATCHED", "MULTIPLE") else "",
+                            "sku": product.article_code if product.photo_status in ("MATCHED", "MULTIPLE") else "",
+                            "article_code": product.article_code if product.photo_status in ("MATCHED", "MULTIPLE") else "",
+                            "style_code": product.style_code,
                             "description": product.description,
                             "filename": names[index] if index < len(names) else Path(image_path).name,
                             "source_pdf": Path(order.source_pdf).name, "extraction_status": "EXTRACTED",
