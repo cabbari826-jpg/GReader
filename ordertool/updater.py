@@ -46,7 +46,14 @@ def _get(url: str, timeout: int = 15):
 
 
 def check_for_update(current_version: str) -> ReleaseInfo | None:
-    payload = json.loads(_get(GITHUB_API).decode("utf-8"))
+    try:
+        release_data = _get(GITHUB_API)
+    except UpdateError as exc:
+        # A freshly initialized repository has no stable Release yet.
+        if "HTTP Error 404" in str(exc):
+            return None
+        raise
+    payload = json.loads(release_data.decode("utf-8"))
     tag = str(payload.get("tag_name") or "").strip()
     latest = tag.lstrip("vV")
     if not latest:
