@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+build/
+dist/
+*.spec
+
+# Local business data - never commit actual orders/catalogues/photos
+Output/
+Converted_Orders/
+Validation_Reports/
+Product_Photos/
+Processing_Logs/
+*.sqlite
+*.db
+*.pdf
+*.xlsx
+*.xlsm
+*.csv
+*.jsonl
+
+# Windows installer outputs
+installer_output/
+resources/tesseract/
