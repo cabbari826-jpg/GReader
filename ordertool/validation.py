@@ -126,20 +126,24 @@ def validate_order(
         else:
             discount_factor = (Decimal("100") - retail_discount_percent) / Decimal("100")
             product.expected_unit_price = _round_money(record.official_price * discount_factor)
-            product.official_price = product.expected_unit_price
+            # The PDF's Price column is the catalogue Retail Price in the supplied
+            # order-proposal layout. Compare document prices to retail for source
+            # consistency; calculate the negotiated net buying price separately.
+            product.official_price = record.official_price
             if product.unit_price is None:
                 product.issues.append("UNIT_PRICE_MISSING: unit price could not be extracted.")
             else:
                 product.price_difference = _round_money(
-                    product.unit_price - product.expected_unit_price
+                    product.unit_price - record.official_price
                 )
                 if abs(product.price_difference) > tolerance:
                     direction = "HIGHER" if product.price_difference > 0 else "LOWER"
                     product.issues.append(
-                        f"PRICE_{direction}: extracted price {product.unit_price} differs from "
-                        f"expected bulk price {product.expected_unit_price} "
-                        f"({retail_discount_percent}% off retail {record.official_price}) "
-                        f"by {product.price_difference}."
+                        f"PRICE_{direction}: PDF price {product.unit_price} differs from "
+                        f"catalogue Retail Price {record.official_price} by "
+                        f"{product.price_difference}. The expected bulk purchase price "
+                        f"after {retail_discount_percent}% discount is "
+                        f"{product.expected_unit_price}."
                     )
 
         if product.quantity is None:
