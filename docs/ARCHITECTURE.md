@@ -30,7 +30,9 @@ PDF order queue
 
 ## Business price rule
 
-The official catalogue value is Retail Price. The default bulk discount is 60%, and the expected purchase price is Retail Price multiplied by 0.40. Users can change the discount in the desktop application. Extracted PDF prices remain unchanged; differences are reported rather than corrected.
+The official catalogue value is Retail Price. The sample order-proposal PDFs print that retail value, so PDF-to-catalogue price validation compares extracted PDF unit price against Retail Price. This is the source-document consistency check.
+
+The default bulk discount is 60%, and the estimated expected purchase price is Retail Price multiplied by 0.40. Users can change the discount in the desktop application. This net purchase estimate and expected bulk line total are reported separately; they are not used to falsely classify a retail-priced order proposal as a price discrepancy. PDF line-total arithmetic is checked against the extracted PDF unit price and quantity.
 
 ## Data integrity and privacy
 
