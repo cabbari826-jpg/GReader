@@ -27,7 +27,7 @@ if exist "resources\tesseract\tesseract.exe" set TESSERACT_DATA_ARG=--add-data "
 pyinstaller --noconfirm --clean --windowed --onedir ^
   --name PDFOrderValidator ^
   --collect-all PySide6 --collect-all fitz --collect-all openpyxl --collect-all PIL ^
-  --hidden-import pytesseract --hidden-import win32com.client --hidden-import pythoncom ^
+  --hidden-import pytesseract ^
   %TESSERACT_DATA_ARG% ^
   app.py
 if errorlevel 1 goto :error
