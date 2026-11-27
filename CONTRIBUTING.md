@@ -5,8 +5,9 @@
 3. Run `python -m compileall -q app.py ordertool tests`.
 4. Run `python -m pytest -q`.
 5. Never add real order PDFs, catalogues, customer details, extracted photographs, or generated business workbooks.
-6. Any workbook-export change must preserve audit values and include a regression test.
+6. Any change to catalogue parsing must preserve both Article Code and Style Code.
+7. Price-check tests must account for the configured retail discount; the default is 60%.
+8. In-cell picture tests must verify OOXML rich-value metadata and embedded image bytes. Floating DrawingML images are not accepted.
+9. Changes to update/install flows must preserve SHA-256 verification and ask the user before running an installer.
 
-## Native photo requirement
-
-A workbook with photos is accepted only when each photo is a native Excel in-cell image. A drawing object positioned over a cell is not equivalent. Validate the workbook with supported desktop Excel, sort/filter the product table by SKU, save, close, and reopen. See [docs/EXCEL_IN_CELL_IMAGES.md](docs/EXCEL_IN_CELL_IMAGES.md).
+Before deployment, verify the workbook in the target Microsoft Excel version by sorting/filtering the product table by Article Code.
