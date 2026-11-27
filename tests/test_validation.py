@@ -35,13 +35,14 @@ def catalogue():
     }
 
 
-def test_style_code_maps_to_article_and_uses_sixty_percent_bulk_discount():
+def test_style_code_maps_to_article_and_pdf_retail_price_is_verified():
+    # The supplied order PDF shows retail 49.90; bulk buying cost is calculated separately.
     product = ProductLine(
         style_code=STYLE,
         description="Steel vase",
         quantity=Decimal("2"),
-        unit_price=EXPECTED_BULK,
-        line_total=Decimal("39.92"),
+        unit_price=RETAIL,
+        line_total=Decimal("99.80"),
         photo_status="MATCHED",
     )
     order = make_order(product)
@@ -53,30 +54,32 @@ def test_style_code_maps_to_article_and_uses_sixty_percent_bulk_discount():
     assert product.retail_price == RETAIL
     assert product.expected_unit_price == EXPECTED_BULK
     assert product.price_difference == Decimal("0.00")
+    assert product.expected_line_total == Decimal("39.92")
+    assert product.calculated_line_total == Decimal("99.80")
     assert product.validation_status == "VERIFIED"
 
 
-def test_source_price_is_preserved_and_discounted_price_mismatch_is_reported():
+def test_pdf_price_difference_from_catalogue_retail_is_reported():
     product = ProductLine(
         style_code=STYLE,
         description="Steel vase",
         quantity=Decimal("2"),
-        unit_price=Decimal("20.00"),
-        line_total=Decimal("40.00"),
+        unit_price=Decimal("52.00"),
+        line_total=Decimal("104.00"),
         photo_status="MATCHED",
     )
     order = make_order(product)
     validate_order(order, catalogue(), retail_discount_percent=Decimal("60"))
 
-    assert product.unit_price == Decimal("20.00")
-    assert product.line_total == Decimal("40.00")
+    assert product.unit_price == Decimal("52.00")
+    assert product.line_total == Decimal("104.00")
     assert product.expected_unit_price == EXPECTED_BULK
-    assert product.price_difference == Decimal("0.04")
+    assert product.price_difference == Decimal("2.10")
     assert product.validation_status == "DISCREPANCY"
     assert any(issue.startswith("PRICE_HIGHER") for issue in product.issues)
 
 
-def test_discount_can_be_changed_by_user():
+def test_discount_can_be_changed_by_user_without_changing_pdf_retail_check():
     product = ProductLine(
         style_code=STYLE,
         quantity=Decimal("1"),
@@ -87,4 +90,5 @@ def test_discount_can_be_changed_by_user():
     order = make_order(product)
     validate_order(order, catalogue(), retail_discount_percent=Decimal("0"))
     assert product.expected_unit_price == RETAIL
+    assert product.price_difference == Decimal("0.00")
     assert product.validation_status == "VERIFIED"
