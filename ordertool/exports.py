@@ -279,20 +279,22 @@ def build_validation_report(orders: list[OrderData], output_dir: str | Path, tol
 
     detailed = workbook.create_sheet("Detailed Validation")
     headers = [
-        "Source PDF", "Order Number", "Order Date", "Page", "Product Code", "Product Description",
-        "Extracted Quantity", "Extracted Unit Price", "Official Unit Price", "Price Difference",
-        "Extracted Line Total", "Expected Line Total", "Quantity Issue", "Kit Q.ty",
-        "Validation Status", "Explanation / Issues", "Photo Status", "Photo Filename",
+        "Source PDF", "Order Number", "Order Date", "Page", "Article Code", "Style Code",
+        "Product Description", "Extracted Quantity", "Extracted Unit Price", "Retail Price",
+        "Expected Unit Price", "Price Difference", "Extracted Line Total", "Expected Purchase Total",
+        "Quantity Issue", "Kit Q.ty", "Validation Status", "Explanation / Issues",
+        "Photo Status", "Photo Filename",
     ]
     detailed.append(headers)
     for order in orders:
         for product in order.products:
             detailed.append([
                 Path(order.source_pdf).name, order.order_number, order.order_date, product.page,
-                product.sku, sanitize_excel_text(product.description),
+                product.article_code, product.style_code, sanitize_excel_text(product.description),
                 float(product.quantity) if product.quantity is not None else None,
                 float(product.unit_price) if product.unit_price is not None else None,
-                float(product.official_price) if product.official_price is not None else None,
+                float(product.retail_price) if product.retail_price is not None else None,
+                float(product.expected_unit_price) if product.expected_unit_price is not None else None,
                 float(product.price_difference) if product.price_difference is not None else None,
                 float(product.line_total) if product.line_total is not None else None,
                 float(product.expected_line_total) if product.expected_line_total is not None else None,
@@ -305,32 +307,35 @@ def build_validation_report(orders: list[OrderData], output_dir: str | Path, tol
     detailed.freeze_panes = "A2"
 
     price_ws = workbook.create_sheet("Price Discrepancies")
-    price_ws.append(["Source PDF", "Order Number", "Product Code", "Description", "Quantity",
-                     "Extracted Price", "Official Price", "Unit Difference", "Total Exposure",
-                     "Status", "Explanation"])
+    price_ws.append(["Source PDF", "Order Number", "Article Code", "Style Code", "Description", "Quantity",
+                     "Extracted PDF Price", "Retail Price", "Expected Purchase Price",
+                     "Unit Difference", "Total Exposure", "Status", "Explanation"])
     for order in orders:
         for product in order.products:
             if product.price_difference is not None and abs(product.price_difference) > tolerance:
                 exposure = abs(product.price_difference * product.quantity) if product.quantity is not None else None
                 price_ws.append([
-                    Path(order.source_pdf).name, order.order_number, product.sku, product.description,
+                    Path(order.source_pdf).name, order.order_number, product.article_code, product.style_code,
+                    product.description,
                     float(product.quantity) if product.quantity is not None else None,
                     float(product.unit_price) if product.unit_price is not None else None,
-                    float(product.official_price) if product.official_price is not None else None,
+                    float(product.retail_price) if product.retail_price is not None else None,
+                    float(product.expected_unit_price) if product.expected_unit_price is not None else None,
                     float(product.price_difference), float(exposure) if exposure is not None else None,
                     product.validation_status, "; ".join(i for i in product.issues if i.startswith("PRICE_")),
                 ])
     _format_table(price_ws, 1, price_ws.max_row, "PriceDiscrepancies")
 
     qty_ws = workbook.create_sheet("Quantity Discrepancies")
-    qty_ws.append(["Source PDF", "Order Number", "Product Code", "Description",
+    qty_ws.append(["Source PDF", "Order Number", "Article Code", "Style Code", "Description",
                    "Extracted Quantity", "Kit Q.ty", "Quantity Issue", "Status"])
     for order in orders:
         for product in order.products:
             issues = [i for i in product.issues if i.startswith(("QUANTITY_", "KIT_QTY_"))]
             if issues:
                 qty_ws.append([
-                    Path(order.source_pdf).name, order.order_number, product.sku, product.description,
+                    Path(order.source_pdf).name, order.order_number, product.article_code, product.style_code,
+                    product.description,
                     float(product.quantity) if product.quantity is not None else None,
                     float(product.kit_qty) if product.kit_qty is not None else None,
                     "; ".join(issues), product.validation_status,
@@ -338,8 +343,8 @@ def build_validation_report(orders: list[OrderData], output_dir: str | Path, tol
     _format_table(qty_ws, 1, qty_ws.max_row, "QuantityDiscrepancies")
 
     unmatched_ws = workbook.create_sheet("Missing and Unmatched Products")
-    unmatched_ws.append(["Source PDF", "Order Number", "Page", "Extracted Product Code",
-                         "Description", "Match Method", "Confidence", "Issue"])
+    unmatched_ws.append(["Source PDF", "Order Number", "Page", "Extracted Article Code",
+                         "PDF Style Code", "Description", "Match Method", "Confidence", "Issue"])
     for order in orders:
         for product in order.products:
             issues = [i for i in product.issues if i.startswith(
@@ -347,22 +352,24 @@ def build_validation_report(orders: list[OrderData], output_dir: str | Path, tol
             )]
             if issues:
                 unmatched_ws.append([
-                    Path(order.source_pdf).name, order.order_number, product.page, product.sku,
-                    product.description, product.match_method, product.match_confidence, "; ".join(issues),
+                    Path(order.source_pdf).name, order.order_number, product.page, product.article_code,
+                    product.style_code, product.description, product.match_method,
+                    product.match_confidence, "; ".join(issues),
                 ])
     _format_table(unmatched_ws, 1, unmatched_ws.max_row, "UnmatchedProducts")
 
     calc_ws = workbook.create_sheet("Calculation Errors")
-    calc_ws.append(["Source PDF", "Order Number", "Page", "Product Code", "Description",
-                    "Quantity", "Unit Price", "Extracted Line Total", "Calculated Line Total",
-                    "Difference", "Issue"])
+    calc_ws.append(["Source PDF", "Order Number", "Page", "Article Code", "Style Code",
+                    "Description", "Quantity", "Unit Price", "Extracted Line Total",
+                    "Calculated Line Total", "Difference", "Issue"])
     for order in orders:
         for product in order.products:
             issues = [i for i in product.issues if i.startswith("LINE_TOTAL_")]
             if issues:
                 calc_ws.append([
-                    Path(order.source_pdf).name, order.order_number, product.page, product.sku,
-                    product.description, float(product.quantity) if product.quantity is not None else None,
+                    Path(order.source_pdf).name, order.order_number, product.page, product.article_code,
+                    product.style_code, product.description,
+                    float(product.quantity) if product.quantity is not None else None,
                     float(product.unit_price) if product.unit_price is not None else None,
                     float(product.line_total) if product.line_total is not None else None,
                     float(product.calculated_line_total) if product.calculated_line_total is not None else None,
@@ -387,7 +394,7 @@ def build_validation_report(orders: list[OrderData], output_dir: str | Path, tol
                 cell.border = Border(bottom=Side(style="hair", color=BORDER))
         ws.row_dimensions[1].height = 34
     for row in range(2, detailed.max_row + 1):
-        detailed.cell(row, 15).fill = PatternFill("solid", fgColor=_status_fill(detailed.cell(row, 15).value))
+        detailed.cell(row, 17).fill = PatternFill("solid", fgColor=_status_fill(detailed.cell(row, 17).value))
     workbook.save(target)
     _verify_workbook(target, {
         "Executive Summary", "Detailed Validation", "Price Discrepancies",
