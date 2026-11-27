@@ -1,30 +1,49 @@
 # PDF Order Converter & Validator
 
-A local-first Windows desktop application for extracting PDF product orders, checking them against official catalogues, exporting Excel files, and maintaining a reusable product-photo library.
+A local-first Windows desktop application for extracting product orders from PDF files, validating prices and quantities against official catalogues, exporting Excel workbooks, and maintaining a reusable product-photo library.
 
 **Target:** Windows 10/11 x64 · **Python:** 3.11 · **GUI:** PySide6
 
-## Core capabilities
+## Product identifiers
 
-- Batch import of multi-page PDF orders.
-- Coordinate-based table extraction and a local Tesseract OCR fallback.
-- Extraction of product codes, descriptions, quantities, prices, totals, and product photos.
-- SKU-first catalogue matching, cautious description matching, and manual review for ambiguous associations.
-- Decimal-based price, arithmetic, line-total, order-total, and optional pack-size checks.
-- Separate order workbooks, six-sheet validation report, product photo library, JSON audit and local SQLite history.
-- Local processing only. Order files and catalogues are not uploaded to external services.
+The PDF contains a **Style Code** (for example, `S2620155-0115`). The official catalogue contains both the Style Code and the numeric **Article Code** (for example, `6814388`). The application links those two fields, but the Article Code is the canonical product identifier after matching.
 
-## Critical photo requirement: native Excel in-cell pictures
+- Validation reports show both Article Code and Style Code.
+- Product-photo filenames use the official Article Code, e.g. `6814388.jpg`.
+- The original PDF Style Code remains available for tracing the source row.
+- A photo is renamed to an Article Code only after the row and photo association are considered reliable.
 
-Product photographs must be **native Excel Picture in Cell values**, not pictures floating over or anchored to worksheet cells.
+## Bulk purchase discount
 
-The export pipeline uses Excel's native *Place in Cell* operation on Windows after Python creates the workbook and embeds the local image bytes. It then checks the OOXML rich-value metadata and the expected photo cells. It does not report success or quietly fall back to floating drawings when native in-cell conversion fails.
+The catalogue's `Retail Price` is the undiscounted reference. The default negotiated bulk discount is **60% off Retail Price**, so the expected purchase price is 40% of Retail Price:
 
-**Runtime requirement for photo workbooks:** Windows with desktop Microsoft Excel that supports Place in Cell (Microsoft 365 or Excel 2024) and the Python `pywin32` package. Microsoft documents that native cell pictures can be sorted and filtered with worksheet data: [Microsoft Support](https://support.microsoft.com/en-us/excel/insert-picture-in-cell-in-excel).
+`Expected purchase price = Retail Price × (1 − discount percentage / 100)`
 
-This dependency is needed only for creating workbooks that contain product photos. The application must explain the compatibility requirement before processing if Excel is unavailable.
+For example, a Retail Price of 49.90 with a 60% discount produces an expected purchase price of 19.96.
 
-See [docs/EXCEL_IN_CELL_IMAGES.md](docs/EXCEL_IN_CELL_IMAGES.md) for the technical approach and acceptance tests.
+The discount is editable in the application (0–100%) and remembered for the next run. The source PDF unit price is never changed. The application compares it to the expected bulk price and reports the difference. The report separately shows the Retail Price, discount, expected purchase price, and extracted PDF price.
+
+## Features
+
+- Batch import of multi-page PDF orders by file picker or drag-and-drop.
+- Coordinate-based extraction using PyMuPDF; local Tesseract OCR fallback for scanned pages.
+- Extraction of order fields, Style Codes, descriptions, quantities, prices, totals, colours, and product photographs.
+- Catalogue import from XLSX, XLSM, CSV, or supported text-based PDF lists.
+- Article Code matching through the catalogue's Style Code mapping, with conservative manual review for unmatched data.
+- Decimal-based price, arithmetic, order-total, and configurable pack-multiple checks.
+- One order workbook per PDF, a six-sheet validation report, and a reusable product-photo library.
+- Native Excel **Picture in Cell** images embedded as rich values, not drawing-layer/floating pictures.
+- Manual product-photo review, JSON audit records, and local SQLite processing history.
+- In-app update checking and installer download with SHA-256 verification.
+- Local document processing. PDFs, price lists, photos, audit records, and reports are not uploaded.
+
+## Native Excel in-cell pictures
+
+The export pipeline writes Excel's native rich-value image representation directly into the XLSX package. Images are stored in the workbook under `xl/media`; worksheet cells refer to them through `vm` metadata and rich-value relationships.
+
+There is no Excel COM automation, no external image URL, and no floating-image fallback. The export verifies that each expected photo cell is bound to a rich-value record and that the image bytes are embedded. Do not open and save the resulting workbook with a library that does not preserve Excel rich values.
+
+Open image-bearing workbooks in a version of Microsoft Excel that supports **Place in Cell**. Sort and filter the table by Article Code during acceptance testing to confirm that images remain with their product records. See [docs/EXCEL_IN_CELL_IMAGES.md](docs/EXCEL_IN_CELL_IMAGES.md).
 
 ## Quick start (Windows)
 
@@ -44,20 +63,28 @@ python -m compileall -q app.py ordertool tests
 python -m pytest -q
 ```
 
+## In-app updates
+
+Use **Check for updates** in the application header. The app checks the latest stable GitHub Release, downloads the installer and its SHA-256 file, verifies the installer, then asks before launching the installer.
+
+A new stable release is published by pushing a version tag such as `v1.0.2`. The GitHub Actions workflow builds the Windows installer and attaches both the installer and checksum to the Release. Running the workflow manually creates a downloadable Actions artifact but does not publish a stable release.
+
+The updater contacts GitHub only to check for release metadata and download the signed-by-checksum installer. It does not transmit order PDFs, catalogues, customer data, or extracted photos.
+
 ## Build the Windows installer
 
-Install Python 3.11 x64 and Inno Setup 6, then run `BUILD_WINDOWS.bat`. Compile `installer.iss` with Inno Setup. The project also contains a GitHub Actions release workflow to build an installer from a `v*` tag.
+Install Python 3.11 x64 and Inno Setup 6, then run `BUILD_WINDOWS.bat`. Alternatively, use the GitHub Actions **Windows installer** workflow. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Accuracy and audit rules
 
-- SKU is the primary matching key. Similar descriptions alone do not establish a product match.
-- Original extracted values are preserved; the application reports discrepancies rather than correcting prices or quantities.
+- Article Code is canonical; Style Code is retained as the PDF-to-catalogue lookup reference.
+- Unmatched or ambiguous catalogue mappings and uncertain photo links require review.
+- Original extracted values are preserved. The application reports differences; it does not silently modify source prices or quantities.
+- Retail Price is not treated as the purchase price when a negotiated discount is configured.
 - Money uses Python `Decimal`.
-- Missing discounts, VAT, or other unavailable fields are not invented.
-- All uncertain product and image associations are flagged for review.
-- Real orders, catalogues, photos, audit logs, and generated business reports must never be committed to this repository.
+- Missing discounts, VAT, or fields not present in the source are not invented.
+- Real business orders, price lists, photos, audit logs, and generated workbooks must never be committed to this repository.
 
-## Current status
+## Current acceptance status
 
-The repository is being assembled from the sample-tested processing implementation. Native in-cell image conversion is now a hard design requirement. The native Excel automation and OOXML verification path still requires Windows acceptance testing on a machine with supported desktop Excel. Do not treat this repository as an accounting-approved production release until the Windows build, in-cell sorting/filtering test, and regression tests pass.
-
+The GitHub Actions checks cover source compilation, unit tests, and PySide6 window construction. They do not provide an activated Microsoft Excel desktop instance. Before accounting use, open an exported workbook in the target Excel version, sort/filter by Article Code, and verify that each native in-cell image stays with its product row. Also run a batch against current production catalogues and reconcile cover totals.
