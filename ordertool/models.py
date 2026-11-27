@@ -1,23 +1,31 @@
 from __future__ import annotations
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
-from pathlib import Path
 from typing import Any, Optional
+
 
 @dataclass
 class PriceRecord:
+    # sku is retained as a compatibility alias; it always means Article Code.
     sku: str
     description: str = ""
     official_price: Optional[Decimal] = None
     kit_qty: Optional[Decimal] = None
     catalog_qty: Optional[Decimal] = None
     article_code: str = ""
+    style_code: str = ""
     source_file: str = ""
     raw: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self):
+        self.article_code = str(self.article_code or self.sku or "").strip()
+        self.sku = self.article_code
+
+
 @dataclass
 class ProductLine:
+    # sku is retained as a compatibility alias; once validated it means Article Code.
     sku: str = ""
     description: str = ""
     quantity: Optional[Decimal] = None
@@ -28,6 +36,8 @@ class ProductLine:
     vat: Optional[Decimal] = None
     colour: str = ""
     page: int = 0
+    style_code: str = ""
+    article_code: str = ""
     photo_path: Optional[str] = None
     photo_filename: str = ""
     photo_paths: list[str] = field(default_factory=list)
@@ -48,6 +58,12 @@ class ProductLine:
     issues: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
+    def __post_init__(self):
+        self.article_code = str(self.article_code or self.sku or "").strip()
+        self.sku = self.article_code
+        self.style_code = str(self.style_code or "").strip()
+
+
 @dataclass
 class OrderData:
     source_pdf: str
@@ -67,6 +83,7 @@ class OrderData:
     validation_status: str = "PENDING"
     order_workbook: str = ""
     processed_at: str = ""
+
 
 @dataclass
 class BatchResult:
