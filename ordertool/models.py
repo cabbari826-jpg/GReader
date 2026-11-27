@@ -7,10 +7,10 @@ from typing import Any, Optional
 
 @dataclass
 class PriceRecord:
-    # sku is retained as a compatibility alias; it always means Article Code.
+    # sku is a backward-compatible alias for the official Article Code.
     sku: str
     description: str = ""
-    official_price: Optional[Decimal] = None
+    official_price: Optional[Decimal] = None  # Catalogue Retail Price, before negotiated discount.
     kit_qty: Optional[Decimal] = None
     catalog_qty: Optional[Decimal] = None
     article_code: str = ""
@@ -25,7 +25,7 @@ class PriceRecord:
 
 @dataclass
 class ProductLine:
-    # sku is retained as a compatibility alias; once validated it means Article Code.
+    # sku is the app's canonical product key: Article Code, not PDF Style Code.
     sku: str = ""
     description: str = ""
     quantity: Optional[Decimal] = None
@@ -44,7 +44,10 @@ class ProductLine:
     photo_filenames: list[str] = field(default_factory=list)
     photo_status: str = "NOT_FOUND"
     photo_note: str = ""
-    official_price: Optional[Decimal] = None
+    retail_price: Optional[Decimal] = None
+    expected_unit_price: Optional[Decimal] = None
+    discount_percent: Decimal = Decimal("60")
+    official_price: Optional[Decimal] = None  # Backward-compatible alias for expected purchase price.
     price_difference: Optional[Decimal] = None
     expected_line_total: Optional[Decimal] = None
     calculated_line_total: Optional[Decimal] = None
