@@ -8,13 +8,9 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 from openpyxl.formatting.rule import FormulaRule
 from openpyxl.worksheet.table import Table, TableStyleInfo
-from openpyxl.drawing.image import Image as XLImage
-from openpyxl.drawing.spreadsheet_drawing import TwoCellAnchor, AnchorMarker
-from openpyxl.utils.units import pixels_to_EMU
-
 from .models import OrderData
 from .utils import unique_path, safe_name, sanitize_excel_text
-from .excel_images import convert_drawings_to_native_cells
+from .excel_images import embed_native_cell_images
 
 NAVY = "24364B"
 BLUE = "2F5597"
@@ -71,26 +67,6 @@ def _format_table(ws, header_row, end_row, name):
     _style_header(ws, header_row, 1, ws.max_column)
 
 
-def _add_embedded_image(ws, row, image_path, col=1, width_px=112, height_px=72, col_width=18, row_height=62):
-    """Create a temporary embedded drawing; Excel converts it to a native cell image later."""
-    if not image_path or not Path(image_path).is_file():
-        return False
-    image = XLImage(image_path)
-    ratio = min(width_px / max(1, image.width), height_px / max(1, image.height), 1.0)
-    width, height = max(1, int(image.width * ratio)), max(1, int(image.height * ratio))
-    image.width, image.height = width, height
-    cell_width_px = int(col_width * 7 + 5)
-    cell_height_px = int(row_height * 96 / 72)
-    x_off, y_off = max(0, (cell_width_px - width) // 2), max(0, (cell_height_px - height) // 2)
-    marker_from = AnchorMarker(col=col - 1, row=row - 1,
-                               colOff=pixels_to_EMU(x_off), rowOff=pixels_to_EMU(y_off))
-    marker_to = AnchorMarker(col=col - 1, row=row - 1,
-                             colOff=pixels_to_EMU(x_off + width), rowOff=pixels_to_EMU(y_off + height))
-    image.anchor = TwoCellAnchor(editAs="twoCell", _from=marker_from, to=marker_to)
-    ws.add_image(image)
-    return True
-
-
 def _verify_workbook(path, expected_sheets):
     with zipfile.ZipFile(path, "r") as archive:
         bad = archive.testzip()
@@ -108,7 +84,7 @@ def _verify_workbook(path, expected_sheets):
 def _finalize_with_native_images(path, expected_cells):
     count = sum(len(items) for items in expected_cells.values())
     if count:
-        convert_drawings_to_native_cells(path, expected_cells)
+        embed_native_cell_images(path, expected_cells)
     else:
         _verify_workbook(path, set(expected_cells) or None)
 
@@ -179,8 +155,8 @@ def write_order_workbook(order: OrderData, output_dir: str | Path) -> str:
         if product.photo_status in ("REVIEW", "MISSING"):
             ws.cell(row, 1).fill = PatternFill("solid", fgColor=YELLOW)
         if product.photo_status in ("MATCHED", "MULTIPLE") and product.photo_path:
-            if _add_embedded_image(ws, row, product.photo_path, col=1, col_width=18, row_height=62):
-                image_cells["Order Details"].append(f"A{row}")
+            if Path(product.photo_path).is_file():
+                image_cells["Order Details"].append({"cell": f"A{row}", "image": product.photo_path})
     widths = {
         "A": 18, "B": 20, "C": 34, "D": 16, "E": 12, "F": 14, "G": 17, "H": 14,
         "I": 15, "J": 19, "K": 19, "L": 20, "M": 18, "N": 12, "O": 24, "P": 52,
@@ -439,8 +415,8 @@ def build_photo_library(photo_records: list[dict], output_dir: str | Path) -> st
         ws.cell(row, 6).fill = PatternFill("solid", fgColor=_status_fill(record.get("extraction_status")))
         ws.cell(row, 7).fill = PatternFill("solid", fgColor=_status_fill(record.get("verification_status")))
         if record.get("image_path"):
-            if _add_embedded_image(ws, row, record["image_path"], col=3, col_width=18, row_height=65):
-                image_cells["Product Photo Library"].append(f"C{row}")
+            if Path(record["image_path"]).is_file():
+                image_cells["Product Photo Library"].append({"cell": f"C{row}", "image": record["image_path"]})
     widths = {"A": 22, "B": 36, "C": 18, "D": 28, "E": 34, "F": 20, "G": 24, "H": 12, "I": 64}
     for col, width in widths.items():
         ws.column_dimensions[col].width = width
