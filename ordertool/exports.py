@@ -119,7 +119,7 @@ def write_order_workbook(order: OrderData, output_dir: str | Path) -> str:
     headers = [
         "Product Photo", "Article Code", "Style Code", "Product Description", "Ordered Quantity",
         "Unit of Measurement", "Unit Price (PDF)", "Extracted Line Total", "Retail Price",
-        "Expected Unit Price (After Discount)", "Price Difference", "Validation Status",
+        "Expected Unit Price (After Discount)", "PDF Price vs Retail Difference", "Validation Status",
         "Calculated Line Total", "Expected Purchase Total", "Retail Discount (%)",
         "Colour", "Source Page", "Photo Filename", "Validation Notes",
     ]
@@ -281,7 +281,7 @@ def build_validation_report(orders: list[OrderData], output_dir: str | Path, tol
     headers = [
         "Source PDF", "Order Number", "Order Date", "Page", "Article Code", "Style Code",
         "Product Description", "Extracted Quantity", "Extracted Unit Price", "Retail Price",
-        "Expected Unit Price", "Price Difference", "Extracted Line Total", "Expected Purchase Total",
+        "Expected Unit Price", "PDF Price vs Retail Difference", "Extracted Line Total", "Expected Purchase Total",
         "Quantity Issue", "Kit Q.ty", "Validation Status", "Explanation / Issues",
         "Photo Status", "Photo Filename",
     ]
@@ -309,7 +309,7 @@ def build_validation_report(orders: list[OrderData], output_dir: str | Path, tol
     price_ws = workbook.create_sheet("Price Discrepancies")
     price_ws.append(["Source PDF", "Order Number", "Article Code", "Style Code", "Description", "Quantity",
                      "Extracted PDF Price", "Retail Price", "Expected Purchase Price",
-                     "Unit Difference", "Total Exposure", "Status", "Explanation"])
+                     "PDF vs Retail Difference", "Total Exposure", "Status", "Explanation"])
     for order in orders:
         for product in order.products:
             if product.price_difference is not None and abs(product.price_difference) > tolerance:
