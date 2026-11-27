@@ -1,0 +1,17 @@
+[project]
+name = "pdf-order-validator"
+version = "1.0.0"
+description = "Local Windows desktop application for PDF order extraction and validation"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+  "windows_excel: requires Windows desktop Excel with native Place in Cell support",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
