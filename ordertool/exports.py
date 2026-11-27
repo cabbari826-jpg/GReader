@@ -97,7 +97,7 @@ def write_order_workbook(order: OrderData, output_dir: str | Path) -> str:
     ws = workbook.active
     ws.title = "Order Details"
     _base_sheet(ws, "B8")
-    ws.merge_cells("A1:P1")
+    ws.merge_cells("A1:S1")
     ws["A1"] = f"ORDER {order.order_number} - EXTRACTED DETAILS"
     ws["A1"].font = Font(size=16, bold=True, color=WHITE)
     ws["A1"].fill = PatternFill("solid", fgColor=NAVY)
@@ -117,10 +117,11 @@ def write_order_workbook(order: OrderData, output_dir: str | Path) -> str:
                 cell.font = Font(bold=True, color=NAVY)
                 cell.fill = PatternFill("solid", fgColor=PALE_BLUE)
     headers = [
-        "Product Photo", "Product SKU / Code", "Product Description", "Ordered Quantity",
-        "Unit of Measurement", "Unit Price", "Extracted Line Total", "Official Price",
-        "Price Difference", "Validation Status", "Calculated Line Total",
-        "Official Expected Total", "Colour", "Source Page", "Photo Filename", "Validation Notes",
+        "Product Photo", "Article Code", "Style Code", "Product Description", "Ordered Quantity",
+        "Unit of Measurement", "Unit Price (PDF)", "Extracted Line Total", "Retail Price",
+        "Expected Unit Price (After Discount)", "Price Difference", "Validation Status",
+        "Calculated Line Total", "Expected Purchase Total", "Retail Discount (%)",
+        "Colour", "Source Page", "Photo Filename", "Validation Notes",
     ]
     header_row, first_data = 7, 8
     for col_index, heading in enumerate(headers, start=1):
@@ -130,36 +131,39 @@ def write_order_workbook(order: OrderData, output_dir: str | Path) -> str:
     for index, product in enumerate(order.products):
         row = first_data + index
         values = [
-            None, product.sku, product.description,
+            None, product.article_code, product.style_code, product.description,
             float(product.quantity) if product.quantity is not None else None,
             product.uom or "",
             float(product.unit_price) if product.unit_price is not None else None,
             float(product.line_total) if product.line_total is not None else None,
-            float(product.official_price) if product.official_price is not None else None,
+            float(product.retail_price) if product.retail_price is not None else None,
+            float(product.expected_unit_price) if product.expected_unit_price is not None else None,
             float(product.price_difference) if product.price_difference is not None else None,
             product.validation_status,
-            f'=IF(OR(D{row}="",F{row}=""),"",D{row}*F{row})',
-            f'=IF(OR(D{row}="",H{row}=""),"",D{row}*H{row})',
+            f'=IF(OR(E{row}="",G{row}=""),"",E{row}*G{row})',
+            f'=IF(OR(E{row}="",J{row}=""),"",E{row}*J{row})',
+            float(product.discount_percent),
             product.colour, product.page, product.photo_filename,
             "; ".join(product.issues + product.notes),
         ]
         for col_index, value in enumerate(values, start=1):
             cell = ws.cell(row, col_index, sanitize_excel_text(value))
-            cell.alignment = Alignment(vertical="center", wrap_text=col_index in (3, 10, 16))
+            cell.alignment = Alignment(vertical="center", wrap_text=col_index in (4, 12, 19))
             cell.border = Border(bottom=Side(style="hair", color=BORDER))
         ws.row_dimensions[row].height = 62
-        ws.cell(row, 4).number_format = "#,##0.##"
-        for col in (6, 7, 8, 9, 11, 12):
+        ws.cell(row, 5).number_format = "#,##0.##"
+        for col in (7, 8, 9, 10, 11, 13, 14):
             ws.cell(row, col).number_format = '#,##0.00;[Red]-#,##0.00'
-        ws.cell(row, 10).fill = PatternFill("solid", fgColor=_status_fill(product.validation_status))
+        ws.cell(row, 12).fill = PatternFill("solid", fgColor=_status_fill(product.validation_status))
         if product.photo_status in ("REVIEW", "MISSING"):
             ws.cell(row, 1).fill = PatternFill("solid", fgColor=YELLOW)
         if product.photo_status in ("MATCHED", "MULTIPLE") and product.photo_path:
             if Path(product.photo_path).is_file():
                 image_cells["Order Details"].append({"cell": f"A{row}", "image": product.photo_path})
     widths = {
-        "A": 18, "B": 20, "C": 34, "D": 16, "E": 12, "F": 14, "G": 17, "H": 14,
-        "I": 15, "J": 19, "K": 19, "L": 20, "M": 18, "N": 12, "O": 24, "P": 52,
+        "A": 18, "B": 16, "C": 20, "D": 36, "E": 16, "F": 12, "G": 15, "H": 17,
+        "I": 15, "J": 22, "K": 16, "L": 19, "M": 19, "N": 20, "O": 16,
+        "P": 18, "Q": 12, "R": 24, "S": 52,
     }
     for col, width in widths.items():
         ws.column_dimensions[col].width = width
@@ -170,8 +174,8 @@ def write_order_workbook(order: OrderData, output_dir: str | Path) -> str:
         end = first_data + len(order.products) - 1
         for status, colour in (("VERIFIED", GREEN), ("DISCREPANCY", RED), ("REVIEW", YELLOW)):
             ws.conditional_formatting.add(
-                f"J{first_data}:J{end}",
-                FormulaRule(formula=[f'J{first_data}="{status}"'],
+                f"L{first_data}:L{end}",
+                FormulaRule(formula=[f'L{first_data}="{status}"'],
                             fill=PatternFill("solid", fgColor=colour))
             )
 
@@ -188,9 +192,11 @@ def write_order_workbook(order: OrderData, output_dir: str | Path) -> str:
         ("Customer", order.customer_name),
         ("Source PDF", Path(order.source_pdf).name),
         ("Number of Product Lines", f"=COUNTA('Order Details'!B{first_data}:B{first_data + len(order.products)-1})"),
-        ("Total Ordered Quantity", f"=SUM('Order Details'!D{first_data}:D{first_data + len(order.products)-1})"),
-        ("Extracted Line Value", f"=SUM('Order Details'!G{first_data}:G{first_data + len(order.products)-1})"),
-        ("Total Discounts", "Not present in source PDF"),
+        ("Total Ordered Quantity", f"=SUM('Order Details'!E{first_data}:E{first_data + len(order.products)-1})"),
+        ("Extracted Line Value", f"=SUM('Order Details'!H{first_data}:H{first_data + len(order.products)-1})"),
+        ("Retail Discount (%)", float(order.products[0].discount_percent) if order.products else 60),
+        ("Estimated Savings vs Retail", f"=SUMPRODUCT('Order Details'!I{first_data}:I{first_data + len(order.products)-1}-'Order Details'!J{first_data}:J{first_data + len(order.products)-1},'Order Details'!E{first_data}:E{first_data + len(order.products)-1})"),
+        ("Expected Bulk Purchase Value", f"=SUM('Order Details'!N{first_data}:N{first_data + len(order.products)-1})"),
         ("Total VAT", "Not present in source PDF"),
         ("Document Total", float(order.document_total) if order.document_total is not None else None),
         ("Validation Status", order.validation_status),
