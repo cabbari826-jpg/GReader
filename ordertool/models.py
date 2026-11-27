@@ -1,0 +1,78 @@
+from __future__ import annotations
+from dataclasses import dataclass, field, asdict
+from datetime import date
+from decimal import Decimal
+from pathlib import Path
+from typing import Any, Optional
+
+@dataclass
+class PriceRecord:
+    sku: str
+    description: str = ""
+    official_price: Optional[Decimal] = None
+    kit_qty: Optional[Decimal] = None
+    catalog_qty: Optional[Decimal] = None
+    article_code: str = ""
+    source_file: str = ""
+    raw: dict[str, Any] = field(default_factory=dict)
+
+@dataclass
+class ProductLine:
+    sku: str = ""
+    description: str = ""
+    quantity: Optional[Decimal] = None
+    uom: str = ""
+    unit_price: Optional[Decimal] = None
+    line_total: Optional[Decimal] = None
+    discount: Optional[Decimal] = None
+    vat: Optional[Decimal] = None
+    colour: str = ""
+    page: int = 0
+    photo_path: Optional[str] = None
+    photo_filename: str = ""
+    photo_paths: list[str] = field(default_factory=list)
+    photo_filenames: list[str] = field(default_factory=list)
+    photo_status: str = "NOT_FOUND"
+    photo_note: str = ""
+    official_price: Optional[Decimal] = None
+    price_difference: Optional[Decimal] = None
+    expected_line_total: Optional[Decimal] = None
+    calculated_line_total: Optional[Decimal] = None
+    line_total_difference: Optional[Decimal] = None
+    kit_qty: Optional[Decimal] = None
+    catalog_qty_reference: Optional[Decimal] = None
+    matched_sku: str = ""
+    match_method: str = ""
+    match_confidence: Optional[float] = None
+    validation_status: str = "REVIEW"
+    issues: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
+@dataclass
+class OrderData:
+    source_pdf: str
+    source_hash: str
+    order_number: str = ""
+    order_date: Optional[date] = None
+    customer_name: str = ""
+    customer_code: str = ""
+    agent: str = ""
+    page_count: int = 0
+    document_quantity: Optional[Decimal] = None
+    document_total: Optional[Decimal] = None
+    products: list[ProductLine] = field(default_factory=list)
+    extraction_warnings: list[str] = field(default_factory=list)
+    order_issues: list[str] = field(default_factory=list)
+    conversion_status: str = "PENDING"
+    validation_status: str = "PENDING"
+    order_workbook: str = ""
+    processed_at: str = ""
+
+@dataclass
+class BatchResult:
+    orders: list[OrderData] = field(default_factory=list)
+    validation_report: str = ""
+    photo_library: str = ""
+    skipped: list[str] = field(default_factory=list)
+    errors: list[dict[str, str]] = field(default_factory=list)
+    photo_records: list[dict[str, Any]] = field(default_factory=list)
