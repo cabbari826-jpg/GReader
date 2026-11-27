@@ -97,8 +97,10 @@ def _parse_row(words, sku_word, page_number, ocr=False, chars=None):
                 line_total = to_decimal(value)
                 break
     colour = re.sub(r"\s+", " ", " ".join(w[4] for w in line if 478 <= w[0] < 575)).strip()
+    # The PDF contains Style Code. Article Code is resolved from the official catalogue later.
     product = ProductLine(
-        sku=sku_word[4].strip(), description=description, quantity=quantity,
+        sku="", article_code="", style_code=sku_word[4].strip(),
+        description=description, quantity=quantity,
         unit_price=price, line_total=line_total, colour=colour, page=page_number,
         photo_status="REVIEW" if ocr else "NOT_FOUND",
         photo_note="OCR-derived row; image association requires manual confirmation" if ocr else "",
