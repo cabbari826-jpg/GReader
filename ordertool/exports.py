@@ -405,25 +405,26 @@ def build_photo_library(photo_records: list[dict], output_dir: str | Path) -> st
     ws.title = "Product Photo Library"
     _base_sheet(ws, "A2")
     headers = [
-        "Product SKU", "Product Description", "Embedded Photo", "Extracted Image Filename",
-        "Original PDF", "Extraction Status", "Image Verification Status", "Source Page", "Image Path",
+        "Article Code", "Style Code", "Product Description", "Embedded Photo",
+        "Extracted Image Filename", "Original PDF", "Extraction Status",
+        "Image Verification Status", "Source Page", "Image Path",
     ]
     ws.append(headers)
     _style_header(ws, 1, 1, len(headers))
     image_cells = {"Product Photo Library": []}
     for row, record in enumerate(photo_records, start=2):
         ws.append([
-            record.get("sku"), sanitize_excel_text(record.get("description")), None,
+            record.get("article_code") or record.get("sku"), record.get("style_code"),
+            sanitize_excel_text(record.get("description")), None,
             record.get("filename"), record.get("source_pdf"), record.get("extraction_status"),
             record.get("verification_status"), record.get("page"), record.get("image_path"),
         ])
         ws.row_dimensions[row].height = 65
-        ws.cell(row, 6).fill = PatternFill("solid", fgColor=_status_fill(record.get("extraction_status")))
-        ws.cell(row, 7).fill = PatternFill("solid", fgColor=_status_fill(record.get("verification_status")))
-        if record.get("image_path"):
-            if Path(record["image_path"]).is_file():
-                image_cells["Product Photo Library"].append({"cell": f"C{row}", "image": record["image_path"]})
-    widths = {"A": 22, "B": 36, "C": 18, "D": 28, "E": 34, "F": 20, "G": 24, "H": 12, "I": 64}
+        ws.cell(row, 7).fill = PatternFill("solid", fgColor=_status_fill(record.get("extraction_status")))
+        ws.cell(row, 8).fill = PatternFill("solid", fgColor=_status_fill(record.get("verification_status")))
+        if record.get("image_path") and Path(record["image_path"]).is_file():
+            image_cells["Product Photo Library"].append({"cell": f"D{row}", "image": record["image_path"]})
+    widths = {"A": 18, "B": 20, "C": 36, "D": 18, "E": 28, "F": 34, "G": 20, "H": 24, "I": 12, "J": 64}
     for col, width in widths.items():
         ws.column_dimensions[col].width = width
     _format_table(ws, 1, ws.max_row, "ProductPhotoLibrary")
