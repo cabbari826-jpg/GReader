@@ -15,43 +15,79 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
+
+      - name: Determine application version
+        id: app-version
+        shell: pwsh
+        run: |
+          if ("${{ github.ref }}".StartsWith("refs/tags/v")) {
+            $version = "${{ github.ref_name }}".TrimStart("v")
+            Set-Content -Path "ordertool/version.py" -Value "__version__ = `"$version`"" -Encoding utf8
+          } else {
+            $version = (python -c "from ordertool.version import __version__; print(__version__)").Trim()
+          }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "Building PDF Order Validator version $version"
+
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
+
       - name: Run tests
         run: python -m pytest -q
+
+      - name: Compile Python source
+        run: python -m compileall -q app.py ordertool tests
+
       - name: Build standalone application
         shell: cmd
         run: >-
           pyinstaller --noconfirm --clean --windowed --onedir
           --name PDFOrderValidator
           --collect-all PySide6 --collect-all fitz --collect-all openpyxl --collect-all PIL
-          --hidden-import pytesseract --hidden-import win32com.client --hidden-import pythoncom
+          --hidden-import pytesseract
           app.py
+
       - name: Install Inno Setup
         run: choco install innosetup --yes --no-progress
+
       - name: Build installer
         shell: pwsh
         run: |
           $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
           if (-not (Test-Path $iscc)) { $iscc = 'C:\Program Files\Inno Setup 6\ISCC.exe' }
-          & $iscc installer.iss
+          & $iscc "/DMyAppVersion=${{ steps.app-version.outputs.version }}" installer.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Generate installer SHA-256
+        shell: pwsh
+        run: |
+          $installer = "installer_output/PDF_Order_Validator_Setup.exe"
+          if (-not (Test-Path $installer)) { throw "Installer not found: $installer" }
+          $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLower()
+          "$hash  PDF_Order_Validator_Setup.exe" | Set-Content "$installer.sha256" -Encoding ascii
+
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: PDF-Order-Validator-Windows-Installer
-          path: installer_output/*.exe
+          path: |
+            installer_output/PDF_Order_Validator_Setup.exe
+            installer_output/PDF_Order_Validator_Setup.exe.sha256
           if-no-files-found: error
           retention-days: 30
-      - name: Attach installer to GitHub Release
+
+      - name: Attach installer and checksum to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: installer_output/*.exe
+          files: |
+            installer_output/PDF_Order_Validator_Setup.exe
+            installer_output/PDF_Order_Validator_Setup.exe.sha256
           generate_release_notes: true
