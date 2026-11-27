@@ -67,9 +67,17 @@ python -m pytest -q
 
 Use **Check for updates** in the application header. The app checks the latest stable GitHub Release, downloads the installer and its SHA-256 file, verifies the installer, then asks before launching the installer.
 
-A new stable release is published by pushing a version tag such as `v1.0.2`. The GitHub Actions workflow builds the Windows installer and attaches both the installer and checksum to the Release. Running the workflow manually creates a downloadable Actions artifact but does not publish a stable release.
+To publish an installer that the app can discover:
 
-The updater contacts GitHub only to check for release metadata and download the signed-by-checksum installer. It does not transmit order PDFs, catalogues, customer data, or extracted photos.
+1. Open the repository's [Windows installer workflow](https://github.com/cabbari826-jpg/GReader/actions/workflows/windows-release.yml).
+2. Click **Run workflow** and keep branch `main`.
+3. Tick **Publish this installer as a stable GitHub Release for in-app updates**.
+4. Start the workflow. When its tests and Windows build succeed, it attaches the installer and SHA-256 checksum to a versioned GitHub Release.
+5. Future app launches can find that release through **Check for updates**.
+
+You can also push a version tag such as `v1.0.2`; the same workflow builds and publishes it. A manual run without the publish option creates only an Actions artifact and will not make the updater see the installer.
+
+The updater contacts GitHub only to check release metadata and download the installer. It does not transmit order PDFs, catalogues, customer data, or extracted photos. The installer checksum is verified before the app offers to launch it.
 
 ## Build the Windows installer
 
