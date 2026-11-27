@@ -2,6 +2,12 @@ name: Windows installer
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Publish this installer as a stable GitHub Release for in-app updates"
+        required: true
+        type: boolean
+        default: false
   push:
     tags:
       - "v*"
@@ -83,10 +89,12 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Attach installer and checksum to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Publish installer as GitHub Release
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', steps.app-version.outputs.version) }}
+          target_commitish: main
           files: |
             installer_output/PDF_Order_Validator_Setup.exe
             installer_output/PDF_Order_Validator_Setup.exe.sha256
