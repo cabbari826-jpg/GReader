@@ -15,13 +15,15 @@ The PDF contains a **Style Code** (for example, `S2620155-0115`). The official c
 
 ## Bulk purchase discount
 
-The catalogue's `Retail Price` is the undiscounted reference. The default negotiated bulk discount is **60% off Retail Price**, so the expected purchase price is 40% of Retail Price:
+The catalogue's `Retail Price` is the undiscounted reference. The sample order PDFs also print that Retail Price (for example, 49.90), so PDF price validation compares the extracted PDF price to catalogue Retail Price. This checks the source document's price consistency and avoids falsely flagging every sample line.
+
+Separately, the default negotiated bulk discount is **60% off Retail Price**, so the expected purchase price is 40% of Retail Price:
 
 `Expected purchase price = Retail Price × (1 − discount percentage / 100)`
 
-For example, a Retail Price of 49.90 with a 60% discount produces an expected purchase price of 19.96.
+For example, a Retail Price of 49.90 with a 60% discount produces an estimated bulk purchase price of 19.96.
 
-The discount is editable in the application (0–100%) and remembered for the next run. The source PDF unit price is never changed. The application compares it to the expected bulk price and reports the difference. The report separately shows the Retail Price, discount, expected purchase price, and extracted PDF price.
+The discount is editable in the application (0–100%) and remembered for the next run. The source PDF unit price is never changed. The report shows catalogue Retail Price, PDF price difference from retail, discount percentage, expected net unit price, extracted line total, and expected discounted purchase value. The PDF line-total arithmetic is checked against the PDF's own unit price and quantity; the discounted value is shown separately as a cost estimate.
 
 ## Features
 
