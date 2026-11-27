@@ -2,7 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 from decimal import Decimal
 
-from PySide6.QtCore import Qt, QThread, Signal, QStandardPaths, QUrl
+from PySide6.QtCore import Qt, QThread, Signal, QStandardPaths, QUrl, QSettings, QProcess
 from PySide6.QtGui import QPixmap, QDesktopServices
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
@@ -16,6 +16,8 @@ from .pipeline import process_batch, write_audit_log
 from .history import HistoryStore
 from .exports import write_order_workbook, build_photo_library, build_validation_report
 from .utils import unique_path, safe_name
+from .updater import check_for_update, download_update, UpdateError
+from .version import __version__
 
 
 class PdfDropList(QListWidget):
@@ -52,20 +54,53 @@ class ProcessingWorker(QThread):
     completed = Signal(object)
     failed = Signal(str)
 
-    def __init__(self, pdfs, price_lists, output_dir, photo_dir, tolerance, kit_check, reprocess, history_db):
+    def __init__(self, pdfs, price_lists, output_dir, photo_dir, tolerance, kit_check,
+                 discount_percent, reprocess, history_db):
         super().__init__()
         self.args = (pdfs, price_lists, output_dir, photo_dir, Decimal(str(tolerance)),
-                     kit_check, reprocess, history_db)
+                     kit_check, Decimal(str(discount_percent)), reprocess, history_db)
 
     def run(self):
         try:
             result = process_batch(
                 self.args[0], self.args[1], self.args[2], photo_dir=self.args[3],
                 tolerance=self.args[4], check_kit_multiple=self.args[5],
-                allow_reprocess=self.args[6], history_db=self.args[7],
+                retail_discount_percent=self.args[6],
+                allow_reprocess=self.args[7], history_db=self.args[8],
                 progress=lambda i, n, message: self.progress.emit(i, n, message),
             )
             self.completed.emit(result)
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
+
+class UpdateCheckWorker(QThread):
+    completed = Signal(object)
+    failed = Signal(str)
+
+    def run(self):
+        try:
+            self.completed.emit(check_for_update(__version__))
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
+
+class UpdateDownloadWorker(QThread):
+    progress = Signal(int, int)
+    completed = Signal(str)
+    failed = Signal(str)
+
+    def __init__(self, release):
+        super().__init__()
+        self.release = release
+
+    def run(self):
+        try:
+            path = download_update(
+                self.release,
+                progress=lambda received, total: self.progress.emit(received, total),
+            )
+            self.completed.emit(str(path))
         except Exception as exc:
             self.failed.emit(str(exc))
 
@@ -80,22 +115,23 @@ class PreviewDialog(QDialog):
             f"Order {order.order_number} | {order.order_date or 'Date unavailable'} | "
             f"{len(order.products)} product lines | {order.validation_status}"
         ))
-        table = QTableWidget(len(order.products), 8)
+        table = QTableWidget(len(order.products), 9)
         table.setHorizontalHeaderLabels([
-            "SKU", "Description", "Qty", "PDF Unit Price", "Official Price",
-            "Line Total", "Photo Status", "Validation",
+            "Article Code", "Style Code", "Description", "Qty", "PDF Unit Price",
+            "Retail Price", "Expected Bulk Price", "Photo Status", "Validation",
         ])
         table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         for row, product in enumerate(order.products):
             values = [
-                product.sku, product.description, str(product.quantity or ""),
-                str(product.unit_price or ""), str(product.official_price or ""),
-                str(product.line_total or ""), product.photo_status, product.validation_status,
+                product.article_code, product.style_code, product.description,
+                str(product.quantity or ""), str(product.unit_price or ""),
+                str(product.retail_price or ""), str(product.expected_unit_price or ""),
+                product.photo_status, product.validation_status,
             ]
             for column, value in enumerate(values):
                 item = QTableWidgetItem(str(value))
-                if column == 7:
+                if column == 8:
                     item.setBackground({
                         "VERIFIED": Qt.green, "DISCREPANCY": Qt.red, "REVIEW": Qt.yellow
                     }.get(product.validation_status, Qt.lightGray))
@@ -221,19 +257,113 @@ class MainWindow(QMainWindow):
         self.app_data_dir = Path(app_data or (Path.home() / ".pdf_order_validator"))
         self.app_data_dir.mkdir(parents=True, exist_ok=True)
         self.history = HistoryStore(self.app_data_dir / "history.sqlite")
+        self.settings = QSettings("GReader", "PDFOrderValidator")
         self.worker = None
+        self.update_worker = None
+        self.download_worker = None
+        self.pending_release = None
         self._build_ui()
         self._refresh_history()
         self._refresh_dashboard()
 
+
+    def check_updates(self):
+        if self.update_worker and self.update_worker.isRunning():
+            return
+        self.update_button.setEnabled(False)
+        self.update_button.setText("Checking…")
+        self.update_worker = UpdateCheckWorker(self)
+        self.update_worker.completed.connect(self.on_update_checked)
+        self.update_worker.failed.connect(self.on_update_failed)
+        self.update_worker.start()
+
+    def on_update_checked(self, release):
+        self.update_button.setEnabled(True)
+        self.update_button.setText("Check for updates")
+        if release is None:
+            QMessageBox.information(self, "No updates available",
+                                    f"You are using the latest version ({__version__}).")
+            return
+        self.pending_release = release
+        message = (
+            f"Version {release.version} is available.\n"
+            f"Installed version: {__version__}\n\n"
+            "The installer will be downloaded from this application's GitHub Releases page "
+            "and its SHA-256 checksum verified before it is opened.\n\n"
+            "Download this update now?"
+        )
+        if release.notes:
+            message += "\n\nRelease notes:\n" + release.notes[:2500]
+        answer = QMessageBox.question(self, "Application update available", message,
+                                      QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if answer == QMessageBox.Yes:
+            self.download_latest_update()
+
+    def on_update_failed(self, error):
+        self.update_button.setEnabled(True)
+        self.update_button.setText("Check for updates")
+        QMessageBox.warning(self, "Update check failed", str(error))
+
+    def download_latest_update(self):
+        if not self.pending_release:
+            return
+        self.update_button.setEnabled(False)
+        self.update_button.setText("Downloading update…")
+        self.progress.setValue(0)
+        self.progress_text.setText(f"Downloading version {self.pending_release.version}")
+        self.download_worker = UpdateDownloadWorker(self.pending_release)
+        self.download_worker.progress.connect(self.on_update_download_progress)
+        self.download_worker.completed.connect(self.on_update_downloaded)
+        self.download_worker.failed.connect(self.on_update_download_failed)
+        self.download_worker.start()
+
+    def on_update_download_progress(self, received, total):
+        if total > 0:
+            self.progress.setValue(int(received * 100 / total))
+            self.progress_text.setText(f"Downloading update: {received // 1024} / {total // 1024} KB")
+
+    def on_update_downloaded(self, installer_path):
+        self.update_button.setEnabled(True)
+        self.update_button.setText("Check for updates")
+        self.progress.setValue(100)
+        self.progress_text.setText("Update downloaded and checksum verified")
+        answer = QMessageBox.question(
+            self, "Update ready",
+            "The installer was downloaded and its SHA-256 checksum verified. "
+            "The application must close before installation. Start the installer now?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes,
+        )
+        if answer == QMessageBox.Yes:
+            started = QProcess.startDetached(installer_path, [])
+            if started:
+                self.close()
+            else:
+                QMessageBox.warning(self, "Could not start installer",
+                                    f"Run the installer manually: {installer_path}")
+
+    def on_update_download_failed(self, error):
+        self.update_button.setEnabled(True)
+        self.update_button.setText("Check for updates")
+        self.progress_text.setText("Update download failed")
+        QMessageBox.critical(self, "Update failed", str(error))
+
     def _build_ui(self):
         root = QWidget()
         layout = QVBoxLayout(root)
+        header = QHBoxLayout()
         title = QLabel("PDF Order Converter & Validator")
         title.setStyleSheet("font-size:20pt;font-weight:700;color:#24364B")
-        subtitle = QLabel("Local PDF extraction • Product photo capture • Excel conversion • Price and quantity validation")
+        header.addWidget(title)
+        header.addStretch()
+        self.update_button = QPushButton("Check for updates")
+        self.update_button.clicked.connect(self.check_updates)
+        header.addWidget(self.update_button)
+        layout.addLayout(header)
+        subtitle = QLabel(
+            "Local PDF extraction • Article Code matching • Product photos in Excel cells • "
+            "Bulk price validation"
+        )
         subtitle.setStyleSheet("color:#637487")
-        layout.addWidget(title)
         layout.addWidget(subtitle)
         self.kpi_labels = {}
         cards = QHBoxLayout()
@@ -318,6 +448,19 @@ class MainWindow(QMainWindow):
         row.addWidget(self.duplicate_check)
         row.addStretch()
         grid.addLayout(row, 3, 1, 1, 2)
+        self.discount_spin = QDoubleSpinBox()
+        self.discount_spin.setDecimals(1)
+        self.discount_spin.setRange(0, 100)
+        self.discount_spin.setSuffix("%")
+        self.discount_spin.setValue(float(self.settings.value("retail_discount_percent", 60.0)))
+        self.discount_spin.valueChanged.connect(
+            lambda value: self.settings.setValue("retail_discount_percent", value)
+        )
+        grid.addWidget(QLabel("Bulk discount from Retail Price"), 4, 0)
+        grid.addWidget(self.discount_spin, 4, 1)
+        discount_hint = QLabel("60% discount means expected purchase price = 40% of Retail Price.")
+        discount_hint.setStyleSheet("color:#637487")
+        grid.addWidget(discount_hint, 4, 2)
         layout.addWidget(settings)
 
         buttons = QHBoxLayout()
@@ -433,8 +576,8 @@ class MainWindow(QMainWindow):
         self.progress.setValue(0)
         self.worker = ProcessingWorker(
             list(self.pdf_paths), price_lists, output, self.photo_edit.text().strip() or None,
-            self.tolerance.value(), self.kit_check.isChecked(), self.duplicate_check.isChecked(),
-            str(self.history.path),
+            self.tolerance.value(), self.kit_check.isChecked(), self.discount_spin.value(),
+            self.duplicate_check.isChecked(), str(self.history.path),
         )
         self.worker.progress.connect(self.on_progress)
         self.worker.completed.connect(self.on_completed)
